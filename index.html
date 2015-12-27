@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="UTF-8">
+    <title>Practical ML project by OscarPDR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="stylesheets/normalize.css" media="screen">
+    <link href='https://fonts.googleapis.com/css?family=Open+Sans:400,700' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/github-light.css" media="screen">
+  </head>
+  <body>
+    <section class="page-header">
+      <h1 class="project-name">Practical ML project</h1>
+      <h2 class="project-tagline">Project code for the Practical Machine Learning course from coursera&#39;s Data Science specialization (Johns Hopkins University)</h2>
+      <a href="https://github.com/OscarPDR/PracticalML_Project" class="btn">View on GitHub</a>
+      <a href="https://github.com/OscarPDR/PracticalML_Project/zipball/master" class="btn">Download .zip</a>
+      <a href="https://github.com/OscarPDR/PracticalML_Project/tarball/master" class="btn">Download .tar.gz</a>
+    </section>
+
+    <section class="main-content">
+      <h1>
+<a id="practical-machine-learning---project" class="anchor" href="#practical-machine-learning---project" aria-hidden="true"><span class="octicon octicon-link"></span></a>Practical Machine Learning - Project</h1>
+
+<h2>
+<a id="author-oscar-peña-del-rio" class="anchor" href="#author-oscar-pe%C3%B1a-del-rio" aria-hidden="true"><span class="octicon octicon-link"></span></a>Author: Oscar Peña del Rio</h2>
+
+<h2>
+<a id="date-27122015" class="anchor" href="#date-27122015" aria-hidden="true"><span class="octicon octicon-link"></span></a>Date: 27/12/2015</h2>
+
+<p>First, we load all the libraries we will be using within our analysis, and load the data itself (we suppose the data is present in the same folder as the R script).</p>
+
+<div class="highlight highlight-source-r"><pre>library(<span class="pl-smi">caret</span>)
+library(<span class="pl-smi">randomForest</span>)
+library(<span class="pl-smi">rattle</span>)
+library(<span class="pl-smi">rpart.plot</span>)
+library(<span class="pl-smi">RColorBrewer</span>)
+
+<span class="pl-smi">training_data</span> <span class="pl-k">&lt;-</span> read.csv(<span class="pl-s"><span class="pl-pds">'</span>pml-training.csv<span class="pl-pds">'</span></span>)
+<span class="pl-smi">testing_data</span> <span class="pl-k">&lt;-</span> read.csv(<span class="pl-s"><span class="pl-pds">'</span>pml-testing.csv<span class="pl-pds">'</span></span>)</pre></div>
+
+<p>Print how many observations and variables we have in each dataset.</p>
+
+<div class="highlight highlight-source-r"><pre>dim(<span class="pl-smi">training_data</span>)
+dim(<span class="pl-smi">testing_data</span>)</pre></div>
+
+<p>In order to remove columns where all observations are NA, we perform the following processing step.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">training_data</span> <span class="pl-k">&lt;-</span> <span class="pl-smi">training_data</span>[, colSums(is.na(<span class="pl-smi">training_data</span>)) <span class="pl-k">==</span> <span class="pl-c1">0</span>]
+<span class="pl-smi">testing_data</span> <span class="pl-k">&lt;-</span> <span class="pl-smi">testing_data</span>[, colSums(is.na(<span class="pl-smi">testing_data</span>)) <span class="pl-k">==</span> <span class="pl-c1">0</span>]</pre></div>
+
+<p>We still have some columns we are not interested in, so we are going to remove some of them manually from the <em>testing_data</em> set, and the drop all the columns from <em>training_data</em> which are not present in <em>testing_data</em> (they are NOT sensor related). We will save the <em>classe</em> column and append it afterwards to the <em>training_data</em> set.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">testing_data</span> <span class="pl-k">&lt;-</span> subset(<span class="pl-smi">testing_data</span>, <span class="pl-v">select</span><span class="pl-k">=</span><span class="pl-k">-</span>c(
+  <span class="pl-smi">X</span>, <span class="pl-smi">raw_timestamp_part_1</span>, <span class="pl-smi">raw_timestamp_part_2</span>, 
+  <span class="pl-smi">cvtd_timestamp</span>, <span class="pl-smi">new_window</span>, <span class="pl-smi">num_window</span>, <span class="pl-smi">problem_id</span>
+))
+
+dim(<span class="pl-smi">testing_data</span>)
+
+<span class="pl-smi">col_names_to_keep</span> <span class="pl-k">&lt;-</span> colnames(<span class="pl-smi">testing_data</span>)
+<span class="pl-smi">classe</span> <span class="pl-k">&lt;-</span> <span class="pl-smi">training_data</span><span class="pl-k">$</span><span class="pl-smi">classe</span>
+
+<span class="pl-smi">training_data</span> <span class="pl-k">&lt;-</span> <span class="pl-smi">training_data</span>[, (colnames(<span class="pl-smi">training_data</span>) <span class="pl-k">%in%</span> <span class="pl-smi">col_names_to_keep</span>)]
+<span class="pl-smi">training_data</span><span class="pl-k">$</span><span class="pl-smi">classe</span> <span class="pl-k">&lt;-</span> <span class="pl-smi">classe</span>
+dim(<span class="pl-smi">training_data</span>)</pre></div>
+
+<p>Let's begin our prediction!</p>
+
+<p>First, we create a partition on our <em>training_data</em> for cross validation, 70% will form the <em>train_data</em> set and the remaining 30% the <em>test_data</em> set.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-c"># set seed to today's date</span>
+set.seed(<span class="pl-c1">20151227</span>)
+
+<span class="pl-smi">for_training</span> <span class="pl-k">&lt;-</span> createDataPartition(<span class="pl-smi">training_data</span><span class="pl-k">$</span><span class="pl-smi">classe</span>, <span class="pl-v">p</span><span class="pl-k">=</span><span class="pl-c1">0.7</span>, <span class="pl-v">list</span><span class="pl-k">=</span><span class="pl-c1">FALSE</span>)
+
+<span class="pl-smi">train_data</span> <span class="pl-k">&lt;-</span> <span class="pl-smi">training_data</span>[<span class="pl-smi">for_training</span>,]
+<span class="pl-smi">test_data</span> <span class="pl-k">&lt;-</span> <span class="pl-smi">training_data</span>[<span class="pl-k">-</span><span class="pl-smi">for_training</span>,]</pre></div>
+
+<p>For the prediction model, we will apply the Random Forest algorithm. First, we set the control parameters for the <em>train()</em> function, using 10-folds for cross validation.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">RF_model</span> <span class="pl-k">&lt;-</span> randomForest(
+  <span class="pl-smi">train_data</span><span class="pl-k">$</span><span class="pl-smi">classe</span> <span class="pl-k">~</span> .,
+  <span class="pl-v">data</span><span class="pl-k">=</span><span class="pl-smi">train_data</span>,
+  <span class="pl-v">ntree</span><span class="pl-k">=</span><span class="pl-c1">250</span>
+)
+
+<span class="pl-smi">RF_model</span></pre></div>
+
+<p>Now, we build our prediction tool, and check it against the <em>test_data</em> set.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">RF_prediction</span> <span class="pl-k">&lt;-</span> predict(<span class="pl-smi">RF_model</span>, <span class="pl-smi">test_data</span>)
+
+<span class="pl-smi">confusion_matrix</span> <span class="pl-k">&lt;-</span> confusionMatrix(<span class="pl-smi">test_data</span><span class="pl-k">$</span><span class="pl-smi">classe</span>, <span class="pl-smi">RF_prediction</span>)
+
+<span class="pl-smi">model_accuracy</span> <span class="pl-k">&lt;-</span> postResample(<span class="pl-smi">RF_prediction</span>, <span class="pl-smi">test_data</span><span class="pl-k">$</span><span class="pl-smi">classe</span>)
+<span class="pl-smi">model_error</span> <span class="pl-k">&lt;-</span> <span class="pl-c1">1</span> <span class="pl-k">-</span> as.numeric(<span class="pl-smi">confusion_matrix</span><span class="pl-k">$</span><span class="pl-smi">overall</span>[<span class="pl-c1">1</span>])</pre></div>
+
+<p>Finally, we print all the results:</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">confusion_matrix</span>
+<span class="pl-smi">model_accuracy</span>
+<span class="pl-smi">model_error</span></pre></div>
+
+<p>And the prettyfied decision tree of the <em>randomForest()</em> function:</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">decision_tree</span> <span class="pl-k">&lt;-</span> rpart(
+  <span class="pl-smi">train_data</span><span class="pl-k">$</span><span class="pl-smi">classe</span> <span class="pl-k">~</span> .,
+  <span class="pl-v">data</span><span class="pl-k">=</span><span class="pl-smi">train_data</span>,
+  <span class="pl-v">method</span><span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">'</span>class<span class="pl-pds">'</span></span>
+)
+
+fancyRpartPlot(<span class="pl-smi">decision_tree</span>)</pre></div>
+
+<h2>
+<a id="conclusions" class="anchor" href="#conclusions" aria-hidden="true"><span class="octicon octicon-link"></span></a>Conclusions</h2>
+
+<p>We have an accuracy of 99.39%, with an error rate of 0.61%. They are quite good results for a <em>quick</em> analysis. So we launch it against the initial <em>testing_data</em> set, in order to predict their outcome values.</p>
+
+<div class="highlight highlight-source-r"><pre><span class="pl-smi">prediction</span> <span class="pl-k">&lt;-</span> predict(<span class="pl-smi">RF_model</span>, <span class="pl-smi">testing_data</span>)
+
+<span class="pl-smi">prediction</span></pre></div>
+
+      <footer class="site-footer">
+        <span class="site-footer-owner"><a href="https://github.com/OscarPDR/PracticalML_Project">Practical ML project</a> is maintained by <a href="https://github.com/OscarPDR">OscarPDR</a>.</span>
+
+        <span class="site-footer-credits">This page was generated by <a href="https://pages.github.com">GitHub Pages</a> using the <a href="https://github.com/jasonlong/cayman-theme">Cayman theme</a> by <a href="https://twitter.com/jasonlong">Jason Long</a>.</span>
+      </footer>
+
+    </section>
+
+  
+  </body>
+</html>
