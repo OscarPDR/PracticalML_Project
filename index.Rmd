@@ -1,0 +1,118 @@
+---
+title: "Practical Machine Learning - Project"
+author: "Oscar Peña del Rio"
+date: "27/12/2015"
+output: html_document
+---
+
+First, we load all the libraries we will be using within our analysis, and load the data itself (we suppose the data is present in the same folder as the R script).
+
+```{r}
+library(caret)
+library(randomForest)
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+
+training_data <- read.csv('pml-training.csv')
+testing_data <- read.csv('pml-testing.csv')
+```
+
+Print how many observations and variables we have in each dataset.
+
+```{r}
+dim(training_data)
+dim(testing_data)
+```
+
+In order to remove columns where all observations are NA, we perform the following processing step.
+
+```{r}
+training_data <- training_data[, colSums(is.na(training_data)) == 0]
+testing_data <- testing_data[, colSums(is.na(testing_data)) == 0]
+```
+
+We still have some columns we are not interested in, so we are going to remove some of them manually from the *testing_data* set, and the drop all the columns from *training_data* which are not present in *testing_data* (they are NOT sensor related). We will save the *classe* column and append it afterwards to the *training_data* set.
+
+```{r}
+testing_data <- subset(testing_data, select=-c(
+  X, raw_timestamp_part_1, raw_timestamp_part_2, 
+  cvtd_timestamp, new_window, num_window, problem_id
+))
+
+dim(testing_data)
+
+col_names_to_keep <- colnames(testing_data)
+classe <- training_data$classe
+
+training_data <- training_data[, (colnames(training_data) %in% col_names_to_keep)]
+training_data$classe <- classe
+dim(training_data)
+```
+
+Let's begin our prediction!
+
+First, we create a partition on our *training_data* for cross validation, 70% will form the *train_data* set and the remaining 30% the *test_data* set.
+
+```{r}
+# set seed to today's date
+set.seed(20151227)
+
+for_training <- createDataPartition(training_data$classe, p=0.7, list=FALSE)
+
+train_data <- training_data[for_training,]
+test_data <- training_data[-for_training,]
+```
+
+For the prediction model, we will apply the Random Forest algorithm. First, we set the control parameters for the *train()* function, using 10-folds for cross validation.
+
+```{r}
+RF_model <- randomForest(
+  train_data$classe ~ .,
+  data=train_data,
+  ntree=250
+)
+
+RF_model
+```
+
+Now, we build our prediction tool, and check it against the *test_data* set.
+
+```{r}
+RF_prediction <- predict(RF_model, test_data)
+
+confusion_matrix <- confusionMatrix(test_data$classe, RF_prediction)
+
+model_accuracy <- postResample(RF_prediction, test_data$classe)
+model_error <- 1 - as.numeric(confusion_matrix$overall[1])
+```
+
+Finally, we print all the results:
+
+```{r}
+confusion_matrix
+model_accuracy
+model_error
+```
+
+And the prettyfied decision tree of the *randomForest()* function:
+
+```{r}
+decision_tree <- rpart(
+  train_data$classe ~ .,
+  data=train_data,
+  method='class'
+)
+
+fancyRpartPlot(decision_tree)
+```
+
+## Conclusions
+
+We have an accuracy of 99.39%, with an error rate of 0.61%. They are quite good results for a *quick* analysis. So we launch it against the initial *testing_data* set, in order to predict their outcome values.
+
+```{r}
+prediction <- predict(RF_model, testing_data)
+
+prediction
+```
